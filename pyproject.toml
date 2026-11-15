@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "CPU foundation for auditable prosody-planner dataset creation"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+# Deliberately optional: the CPU foundation and its tests need no model runtime.
+psst = ["torch", "transformers>=4.40", "librosa>=0.10", "huggingface_hub"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

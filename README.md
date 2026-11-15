@@ -1,6 +1,6 @@
 # Planner dataset creation — CPU foundation
 
-This project creates a versioned, append-only annotation record for audio/transcript pairs. It currently implements preparation, validation, import/reconciliation of **saved** PSST output, a boundary-only export, and summaries. It does **not** download or run PSST, perform forced alignment, modify audio, train a model, or create other prosody annotations.
+This project creates a versioned, append-only annotation record for audio/transcript pairs. It implements preparation, validation, import/reconciliation of saved PSST output, optional live PSST inference, a boundary-only export, and summaries. It does not perform forced alignment, modify audio, train a model, or create other prosody annotations.
 
 ## Core guarantees
 
@@ -44,10 +44,25 @@ python -m planner_dataset validate RECORDS.jsonl
 python -m planner_dataset import-psst RECORDS.jsonl PSST_OUTPUT.jsonl ANNOTATED.jsonl
 python -m planner_dataset export-boundaries ANNOTATED.jsonl EXAMPLES.jsonl
 python -m planner_dataset summarize ANNOTATED.jsonl
+python -m planner_dataset annotate-psst RECORDS.jsonl ANNOTATED.jsonl [--device cuda]
 ```
 
 Every prepared record stores source manifest and audio SHA-256 values, schema/reconciliation versions, split settings, and processing provenance. This enables a later inference adapter to cache and resume safely without changing the record format.
 
 ## Remaining work
 
-Real PSST inference has not been implemented or tested. A future optional adapter should cache the exact model revision, generation settings, model artifact hash, and input audio hash, then write the saved-output format above. Forced alignment alone may populate the shared `timing` layer; later modules may read it but must not create competing timestamp copies.
+## Live PSST pilot (Kaggle GPU)
+
+Use a small LibriTTS `dev-clean` manifest first. LibriTTS is CC BY 4.0, TTS-oriented, sentence-segmented, and provides both original and normalized transcripts; put the **original** transcript in the manifest. Mount the audio as a Kaggle input or add it to a private Kaggle dataset, then run:
+
+```bash
+pip install -e ".[psst]"
+python -m planner_dataset prepare manifest.jsonl records.jsonl
+python -m planner_dataset annotate-psst records.jsonl records.psst.jsonl --device cuda
+python -m planner_dataset summarize records.psst.jsonl
+python -m planner_dataset export-boundaries records.psst.jsonl boundaries.jsonl
+```
+
+The first run requires Kaggle Internet for packages and `NathanRoll/psst-medium-en` (about 3.06 GB). The adapter records requested/resolved model revision, runtime versions, device, generation settings, and audio checksum. It reuses unchanged cached PSST annotations on later runs. It refuses audio over 30 seconds rather than silently truncating or segmenting it; use pre-existing utterance clips and preserve their source offsets. A GPU is strongly recommended, though `--device cpu` is available for a tiny diagnostic run.
+
+Real PSST inference has not yet been executed in this repository. Forced alignment alone may populate the shared `timing` layer; later modules may read it but must not create competing timestamp copies.

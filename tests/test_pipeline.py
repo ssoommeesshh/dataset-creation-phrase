@@ -86,5 +86,26 @@ class PipelineTests(unittest.TestCase):
         second = annotate_record(first, output)
         self.assertEqual(first, second)
 
+    def test_live_adapter_reuses_matching_cached_annotation(self):
+        # Exercise live-adapter cache logic without importing model dependencies.
+        import planner_dataset.psst_inference as live
+        record = self.make_record("one two")
+        calls = []
+        class FakePredictor:
+            def __init__(self, **kwargs): self.kwargs = kwargs
+            def output_for(self, item, *, base_dir):
+                calls.append(item["recording"]["id"])
+                return {"recording_id": "r", "raw_transcription": "one two", "source": {
+                    "model": "fake", "revision_requested": None, "audio_sha256": item["recording"]["audio_sha256"],
+                    "generation": {"max_new_tokens": 250, "max_audio_seconds": 30.0}}}
+        original = live.PSSTPredictor; live.PSSTPredictor = FakePredictor
+        try:
+            first = live.annotate_live([record], records_path="records.jsonl", model_name="fake")
+            second = live.annotate_live(first, records_path="records.jsonl", model_name="fake")
+        finally:
+            live.PSSTPredictor = original
+        self.assertEqual(calls, ["r"])
+        self.assertEqual(first, second)
+
 
 if __name__ == "__main__": unittest.main()
