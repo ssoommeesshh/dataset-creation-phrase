@@ -5,6 +5,7 @@ import platform
 from pathlib import Path
 from typing import Any
 
+from . import RECONCILIATION_VERSION
 from .psst import annotate_record
 
 DEFAULT_MODEL = "NathanRoll/psst-medium-en"
@@ -75,18 +76,27 @@ class PSSTPredictor:
 def annotate_live(records: list[dict[str, Any]], *, records_path: str | Path, model_name: str = DEFAULT_MODEL,
                   revision: str | None = None, device: str = "auto", max_audio_seconds: float = 30.0,
                   max_new_tokens: int = 250) -> list[dict[str, Any]]:
-    predictor = PSSTPredictor(model_name=model_name, revision=revision, device=device,
-                              max_audio_seconds=max_audio_seconds, max_new_tokens=max_new_tokens)
     root = Path(records_path).parent
     result = []
+    predictor = None
     for record in records:
         # Existing evidence with the same model/source checksum is a reusable inference cache.
         previous = record.get("annotations", {}).get("psst", {})
         source = previous.get("source", {})
-        if (previous.get("status") == "reconciled" and source.get("model") == model_name and
+        cache_matches = (previous.get("status") == "reconciled" and source.get("model") == model_name and
                 source.get("revision_requested") == revision and source.get("audio_sha256") == record["recording"]["audio_sha256"] and
-                source.get("generation") == {"max_new_tokens": max_new_tokens, "max_audio_seconds": max_audio_seconds}):
-            result.append(record)
+                source.get("generation") == {"max_new_tokens": max_new_tokens, "max_audio_seconds": max_audio_seconds})
+        if cache_matches:
+            # Reconcile an older schema/version from preserved raw evidence without
+            # loading the model or repeating inference.
+            if previous.get("reconciliation_version") == RECONCILIATION_VERSION:
+                result.append(record)
+            else:
+                result.append(annotate_record(record, {"recording_id": record["recording"]["id"],
+                                                        "raw_transcription": previous["raw_transcription"], "source": source}))
             continue
+        if predictor is None:
+            predictor = PSSTPredictor(model_name=model_name, revision=revision, device=device,
+                                      max_audio_seconds=max_audio_seconds, max_new_tokens=max_new_tokens)
         result.append(annotate_record(record, predictor.output_for(record, base_dir=root)))
     return result

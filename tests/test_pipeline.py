@@ -28,6 +28,11 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual([x["text"] for x in parsed["generated_words"]], ["hello", "world", "again"])
         self.assertEqual(parsed["marker_after_generated_indices"], [0, 1])
 
+    def test_whisper_control_prefix_is_not_a_generated_word(self):
+        parsed = parse_psst("<|startoftranscript|><|transcribe|>They !!!!! agreed")
+        self.assertEqual([x["text"] for x in parsed["generated_words"]], ["They", "agreed"])
+        self.assertEqual([x["token"] for x in parsed["stripped_control_tokens"]], ["<|startoftranscript|>", "<|transcribe|>"])
+
     def test_exact_transfer_positive_negative_and_terminal_mask(self):
         record = self.make_record()
         out = annotate_record(record, {"recording_id": "r", "raw_transcription": "hello !!!!! world again"})

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any
 
 from . import RECONCILIATION_VERSION
@@ -8,6 +9,10 @@ from .schema import validate_record
 from .util import normalized_word, stable_hash
 
 MARKERS = {"!!!!!", "<|IU_Boundary|>"}
+# Standard Whisper decoder control tokens have appeared concatenated with the
+# first lexical token in recent Transformers output. They are not words or IU
+# boundaries. Raw text remains untouched; this is matching-only preprocessing.
+CONTROL_TOKEN_RE = re.compile(r"<\|(?!IU_Boundary\|>)[^|>]+\|>")
 
 
 def parse_psst(raw: str) -> dict[str, Any]:
@@ -17,6 +22,7 @@ def parse_psst(raw: str) -> dict[str, Any]:
     generated = []
     marker_after = []
     leading_markers = []
+    stripped_control_tokens = []
     for position, token in enumerate(tokens):
         if token in MARKERS:
             if generated:
@@ -24,9 +30,15 @@ def parse_psst(raw: str) -> dict[str, Any]:
             else:
                 leading_markers.append(position)
         else:
-            generated.append({"text": token, "normalized": normalized_word(token), "raw_token_index": position})
+            lexical = CONTROL_TOKEN_RE.sub("", token)
+            removed = CONTROL_TOKEN_RE.findall(token)
+            if removed:
+                stripped_control_tokens.extend({"token": value, "raw_token_index": position} for value in removed)
+            if lexical:
+                generated.append({"text": lexical, "normalized": normalized_word(lexical), "raw_token_index": position})
     return {"generated_words": generated, "marker_after_generated_indices": marker_after,
-            "leading_marker_token_indices": leading_markers, "accepted_markers": sorted(MARKERS)}
+            "leading_marker_token_indices": leading_markers, "stripped_control_tokens": stripped_control_tokens,
+            "accepted_markers": sorted(MARKERS)}
 
 
 def reconcile(original: list[str], generated: list[str]) -> dict[str, Any]:
@@ -80,7 +92,8 @@ def annotate_record(record: dict[str, Any], output: dict[str, Any]) -> dict[str,
     # The saved output is the CPU-stage cache boundary. A later live adapter can
     # reuse it by submitting the same versioned raw-output object unchanged.
     previous = record.get("annotations", {}).get("psst")
-    if previous and previous.get("raw_output_sha256") == stable_hash(output):
+    if (previous and previous.get("raw_output_sha256") == stable_hash(output) and
+            previous.get("reconciliation_version") == RECONCILIATION_VERSION):
         return deepcopy(record)
     raw = output.get("raw_transcription")
     parsed = parse_psst(raw)
