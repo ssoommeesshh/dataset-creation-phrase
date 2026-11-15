@@ -107,5 +107,10 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(calls, ["r"])
         self.assertEqual(first, second)
 
+    def test_live_adapter_source_keeps_generation_configuration(self):
+        # This provenance is the cache key used by the real optional adapter.
+        record = self.make_record("one two")
+        self.assertEqual(record["recording"]["audio_sha256"], record["processing_history"][0]["audio_sha256"])
+
 
 if __name__ == "__main__": unittest.main()

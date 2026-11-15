@@ -37,7 +37,7 @@ class PSSTPredictor:
         kwargs: dict[str, Any] = {"revision": revision} if revision else {}
         self.processor = AutoProcessor.from_pretrained(model_name, **kwargs)
         # Keep CPU support correct; half precision is only an optional GPU optimization.
-        if device == "cuda": kwargs["torch_dtype"] = torch.float16
+        if device == "cuda": kwargs["dtype"] = torch.float16
         self.model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name, **kwargs).to(device)
         self.model.eval()
         self.resolved_revision = getattr(self.model.config, "_commit_hash", None) or revision or "unresolved"
@@ -55,7 +55,9 @@ class PSSTPredictor:
                 "segment upstream and record clip offsets before PSST inference."
             )
         inputs = self.processor(audio, sampling_rate=16000, return_tensors="pt")
-        features = inputs.input_features.to(self.device)
+        # The GPU model uses FP16; Whisper's processor emits FP32 features.
+        # Match the model dtype before its first convolution.
+        features = inputs.input_features.to(device=self.device, dtype=self.model.dtype)
         with self.torch.inference_mode():
             ids = self.model.generate(features, max_new_tokens=self.max_new_tokens)
         raw = self.processor.batch_decode(ids, skip_special_tokens=True)[0]
