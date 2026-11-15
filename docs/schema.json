@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Planner dataset record",
+  "schema_version": "1.0",
+  "required": ["schema_version", "recording", "words", "timing", "spans", "annotations", "processing_history"],
+  "recording_required": ["id", "audio_path", "audio_sha256", "speaker_id", "source_recording_id", "transcript_original", "source_audio_offset_s", "split"],
+  "word_required": ["id", "text", "start_char", "end_char", "normalized"]
+}

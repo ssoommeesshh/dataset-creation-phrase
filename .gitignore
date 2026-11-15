@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+fixtures/records.prepared.jsonl
+fixtures/records.psst.jsonl
+fixtures/records.psst.rerun.jsonl
+fixtures/boundaries.jsonl
